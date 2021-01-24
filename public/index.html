@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Play with SOUL</title>
+
+		<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+		<meta charset="utf-8">
+		<meta name="description" content="">
+		<meta name="author" content="">
+		<!-- Mobile Specific Metas -->
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+
+		<link rel="stylesheet" href="resources/font.css">
+		<link rel="stylesheet" href="resources/normalize.css">
+		<link rel="stylesheet" href="resources/skeleton.css">
+		<link rel="stylesheet" href="resources/custom.css">
+
+		<script type="text/javascript">
+			const playWithSoul = () => {
+				//https://github.com/soul-lang/SOUL/blob/master/docs/SOUL_WASM.md
+
+				fetch('ringtone.wasm').then(response =>
+					response.arrayBuffer()
+				).then(bytes =>
+					WebAssembly.instantiate(bytes, {})
+				).then(ringtone => {
+					let ringtoneExports = ringtone.instance.exports;
+					let length = ringtoneExports.getDescriptionLength();
+					let offset = ringtoneExports.getDescription();
+
+					let descriptionBuffer = ringtoneExports.memory.buffer.slice(offset, offset+length);
+					var dataView = new DataView(descriptionBuffer);
+					var decoder = new TextDecoder("utf-8");
+					let decodedDescription = decoder.decode(dataView)
+					console.log(JSON.parse(decodedDescription));
+
+					let SAMPLE_RATE = 44100;
+					let NUMBER_OF_CHANNELS = 1; //MONO
+					ringtoneExports.prepareToPlay(SAMPLE_RATE, NUMBER_OF_CHANNELS);
+					let BLOCK_SIZE = ringtoneExports.getBufferSize();
+
+
+					let PLAYING_SECONDS = 3;
+					let BLOCK_COUNT = Math.round(PLAYING_SECONDS * SAMPLE_RATE / BLOCK_SIZE);
+
+
+					var context = new (window.AudioContext || window.webkitAudioContext)();
+					//fill WebAudio specific buffer with sound data
+					var buffer = context.createBuffer(NUMBER_OF_CHANNELS, BLOCK_SIZE*BLOCK_COUNT, SAMPLE_RATE);
+					let bufferMonoChannelData = buffer.getChannelData(0);
+					let outDataOffset = ringtoneExports.getOutData(0);
+
+					for (var i = 0; i < BLOCK_COUNT; i++) {
+						console.log(ringtoneExports.processBlock(BLOCK_SIZE));
+						
+						let outDataBlock = ringtoneExports.memory.buffer.slice(outDataOffset, outDataOffset+BLOCK_SIZE*4);
+						let data = new Float32Array(outDataBlock);
+						console.log(data)
+						for (let j = 0; j < data.length; j++) {
+							bufferMonoChannelData[i*BLOCK_SIZE+j] = data[j];
+						}
+					}
+
+					var source = context.createBufferSource();
+					// set the buffer in the AudioBufferSourceNode
+					source.buffer = buffer;
+					// connect the AudioBufferSourceNode to the
+					// destination so we can hear the sound
+					source.connect(context.destination);
+					// start the source playing
+					source.start();
+				});
+			}
+
+			window.onload = playWithSoul;
+		</script>
+	</head>
+	<body style="text-align: justify;">
+		<div class="container">
+			<section class="header" style="margin-top: 140px;">
+				<h2 class="title">Play with SOUL</h2>
+				<div class="value-props row">
+					<div class="four columns value-prop">
+						Fascinating audio programming experiment/approach - <a href="https://soul.dev/">SOUL</a>
+					</div>
+					<div class="four columns value-prop">
+						Playable in any browser supporting <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API">WebAudio API</a>
+					</div>
+					<div class="four columns value-prop">
+						Expect learning some <a href="https://developer.mozilla.org/en-US/docs/WebAssembly">WebAssembly</a>
+					</div>
+				</div>
+			</section>
+
+			<div class="navbar-spacer"></div>
+
+			<nav class="navbar">
+				<div class="container">
+					<ul class="navbar-list">
+						<li class="navbar-item"><a class="navbar-link" href="#why">Why</a></li>
+						<li class="navbar-item"><a class="navbar-link" href="#web">Web</a></li>
+						<li class="navbar-item"><a class="navbar-link" href="#free">Free?</a></li>
+						<li class="navbar-item"><a class="navbar-link" href="#wasm">WASM?</a></li>
+						<li class="navbar-item"><a class="navbar-link" href="#use">Use</a></li>
+					</ul>
+				</div>
+			</nav>
+
+			<div class="docs-section" id="why">
+				<h6 class="docs-header">Why this exists</h6>
+				<p>Music makes our lives better. Yet audio programming is riddled with many small caveats and obstacles.</p>
+				<p>There is an attempt to simplify some of it by making a specialized sound-graph-based language that can be ported to any language/platform.</p>
+				<p>Before going any furher please check <a href="https://soul.dev/lab/">SOUL playground</a>. To get the taste of what has been done already.
+			</div>
+
+			<div class="docs-section" id="web">
+				<h6 class="docs-header">Web side of things</h6>
+				<p>Web browsers could play sounds for a long time. And they have a powerful <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API">WebAudio API</a> to manipulate sounds.</p>
+				<p>It can be a nice introduction to problems concepts like audio channels, sample rate, oscillators, node-based sound chains and buffering.</p>
+				<p>And as any browser API it has to be generic, feature rich, configurable and so that is why it is hard to use for simple fun audio programming.</p>
+			</div>
+
+			<div class="docs-section" id="free">
+				<h6 class="docs-header">Free to use but...</h6>
+				<p>This is a technology developed by a company <a href="https://roli.com/">Roli</a>. And they plan to get their money back.</p>
+				<p>So while this language is free to use. It is aimed to be monetized through licensing and some parts are simply closed sourced.</p>
+				<p>Does it matter? If you plan to do hobby stuff I (am NOT a lawyer) think you are free to go. But in any other case please contact authors.</p>
+			</div>
+
+			<div class="docs-section" id="wasm">
+				<h6 class="docs-header">WASM?</h6>
+				<p>So you have made your patch using official playground. It works there. But how could you take it and use it on your own web page?</p>
+				<p>Just add a dependency and two lines of code? Well this technology is not aimed for web too much...</p>
+				<p>When you compile your soulpatch you practically get a wasm file (in base64). You can see it at networking tab using Developer Tools in browser.
+			</div>
+
+			<div class="docs-section" id="use">
+				<h6 class="docs-header">Use it!</h6>
+				<p>This page contains an example of how you can use compiled soulpatch on your web page.</p>
+				<p style="text-align: center"><button onclick="playWithSoul()">Play with SOUL</button></p>
+				<p>It is the simplest example with no input. But it shows interaction with WebAssembly module and SOUL specific functions.</p>
+			</div>
+		</div>
+	</body>
+</html>

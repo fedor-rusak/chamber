@@ -40,22 +40,25 @@
 					let BLOCK_SIZE = ringtoneExports.getBufferSize();
 
 
-					let PLAYING_SECONDS = 3;
+					let PLAYING_SECONDS = 4;
 					let BLOCK_COUNT = Math.round(PLAYING_SECONDS * SAMPLE_RATE / BLOCK_SIZE);
 
 
-					var context = new (window.AudioContext || window.webkitAudioContext)();
+					var context = new (window.AudioContext || window.webkitAudioContext)({
+						sampleRate: 44100
+					});
 					//fill WebAudio specific buffer with sound data
 					var buffer = context.createBuffer(NUMBER_OF_CHANNELS, BLOCK_SIZE*BLOCK_COUNT, SAMPLE_RATE);
 					let bufferMonoChannelData = buffer.getChannelData(0);
 					let outDataOffset = ringtoneExports.getOutData(0);
 
-					for (var i = 0; i < BLOCK_COUNT; i++) {
-						console.log(ringtoneExports.processBlock(BLOCK_SIZE));
-						
+					//this +1 creates empty part in the beginning that fixes popping sound
+					for (var i = 1; i < BLOCK_COUNT+1; i++) {
+						ringtoneExports.processBlock(BLOCK_SIZE);
+
 						let outDataBlock = ringtoneExports.memory.buffer.slice(outDataOffset, outDataOffset+BLOCK_SIZE*4);
 						let data = new Float32Array(outDataBlock);
-						console.log(data)
+
 						for (let j = 0; j < data.length; j++) {
 							bufferMonoChannelData[i*BLOCK_SIZE+j] = data[j];
 						}
@@ -72,7 +75,62 @@
 				});
 			}
 
-			window.onload = playWithSoul;
+			const playWithSoulWorklet = (callback) => {
+				var context = new (window.AudioContext || window.webkitAudioContext)({
+						sampleRate: 44100
+					});
+
+				let getRingtone = fetch('ringtone.wasm').then(response =>
+					response.arrayBuffer()
+				);
+
+				let registerWorklet = context.audioWorklet.addModule('ringtonelet.js');
+
+				return Promise.all([getRingtone, registerWorklet]
+					).then(
+						(results) => {
+							let ringtoneBytes = results[0];
+
+							const ringtoneNode = 
+								new AudioWorkletNode(
+									context,
+									'ringtone', 
+									{
+										processorOptions: {
+											ringtoneBytes: ringtoneBytes
+										}
+									}
+								);
+
+							ringtoneNode.port.onmessage = (e) => {
+								ringtoneNode
+									.connect(context.destination);
+								ringtoneNode.port.postMessage('ready')
+
+								try {
+									if (callback) callback();
+								}
+								finally {
+									const PLAYING_SECONDS = 4
+									setTimeout(
+										() => {
+											ringtoneNode.port.postMessage("finished");
+										},
+										PLAYING_SECONDS*1000);
+								}
+							};							
+						}
+					);
+
+			};
+
+			window.onload = () => {
+				playWithSoulWorklet(
+					() => {
+						console.log("soulpatch wasm audioWorklet initialization successful");
+					}
+				);
+			};
 		</script>
 	</head>
 	<body style="text-align: justify;">
@@ -102,6 +160,7 @@
 						<li class="navbar-item"><a class="navbar-link" href="#free">Free?</a></li>
 						<li class="navbar-item"><a class="navbar-link" href="#wasm">WASM?</a></li>
 						<li class="navbar-item"><a class="navbar-link" href="#use">Use</a></li>
+						<li class="navbar-item"><a class="navbar-link" href="#mind">Mindblow</a></li>
 					</ul>
 				</div>
 			</nav>
@@ -139,6 +198,13 @@
 				<p>This page contains an example of how you can use compiled soulpatch on your web page.</p>
 				<p style="text-align: center"><button onclick="playWithSoul()">Play with SOUL</button></p>
 				<p>It is the simplest example with no input. But it shows interaction with WebAssembly module and SOUL specific functions.</p>
+			</div>
+
+			<div class="docs-section" id="use">
+				<h6 class="docs-header">Mind blowing...</h6>
+				<p>This page now also contains an example of how to use thing called [AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet) to play sound produce by SOUL patch.</p>
+				<p style="text-align: center"><button onclick="playWithSoulWorklet()">Play with SOUL (worklet)</button></p>
+				<p>It requires quite a few steps to make it work and even more to synchronize properly. But it feels like a right direction to make some interactive demo with this thing.</p>
 			</div>
 		</div>
 	</body>
